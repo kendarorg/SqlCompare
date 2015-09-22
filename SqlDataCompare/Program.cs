@@ -34,6 +34,7 @@ namespace SqlDataCompare
             {
                 Console.WriteLine(res);
             }
+            Console.ReadKey();
         }
 
         public static string Compare(string srcConn, string dstConn, string table)
@@ -46,16 +47,16 @@ namespace SqlDataCompare
             src.Open();
             dst.Open();
 
-            var res = string.Format("Compare table '{0}' from '{1}' with '{2}'\r\n",table, srcConn,dstConn);
+            var res = string.Format("Compare table '{0}' from '{1}' with '{2}'\r\n", table, srcConn, dstConn);
 
             res += "\r\n";
 
             var keysArray = GetKeys(src, table).ToArray();
 
-            var packagesSrc = src.QueryDictionary(string.Format("SELECT * FROM {0}",table)).ToList();
-            var packagesDst = dst.QueryDictionary(string.Format("SELECT * FROM {0}",table)).ToList();
+            var packagesSrc = src.QueryDictionary(string.Format("SELECT * FROM {0}", table)).ToList();
+            var packagesDst = dst.QueryDictionary(string.Format("SELECT * FROM {0}", table)).ToList();
             res += DoCompare(table, packagesSrc, packagesDst, keysArray);
-           
+
 
             src.Close();
             dst.Close();
@@ -67,11 +68,11 @@ namespace SqlDataCompare
         {
 
             var tb = table.Split('.');
-            
-            string schemaName = tb[0].Trim(new []{'[',']'});
+
+            string schemaName = tb[0].Trim(new[] { '[', ']' });
             string tableName = tb[1].Trim(new[] { '[', ']' });
 
-            
+
 
 
             SqlCommand command = new SqlCommand(@"
@@ -98,8 +99,28 @@ namespace SqlDataCompare
 
         private static string DoCompare(string tableName, List<Dictionary<string, string>> src, List<Dictionary<string, string>> dst, string[] keys)
         {
+
             var result = string.Empty;
-            var props = GetStructure(src);
+            var propsSrc = GetStructure(src);
+            var propsDst = GetStructure(dst);
+
+
+            foreach (var key in propsSrc.Keys)
+            {
+                if (!propsDst.ContainsKey(key))
+                {
+                    result += string.Format("Missing field '{0}' on destination.\r\n", key);
+                }
+            }
+
+            foreach (var key in propsDst.Keys)
+            {
+                if (!propsSrc.ContainsKey(key))
+                {
+                    result += string.Format("Missing field '{0}' on source.\r\n", key);
+                }
+            }
+
             var different = new List<Tuple<Dictionary<string, string>, Dictionary<string, string>>>();
             var missingOnDst = new List<Dictionary<string, string>>();
             var missingOnSrc = new List<Dictionary<string, string>>();
@@ -108,9 +129,9 @@ namespace SqlDataCompare
             {
                 foreach (var dstItem in dst)
                 {
-                    if (IsKeyMatching(props, srcItem, dstItem, keys))
+                    if (IsKeyMatching(propsSrc, srcItem, dstItem, keys))
                     {
-                        if (!IsAllMatching(props, srcItem, dstItem))
+                        if (!IsAllMatching(propsSrc, srcItem, dstItem))
                         {
                             different.Add(new Tuple<Dictionary<string, string>, Dictionary<string, string>>(srcItem, dstItem));
                         }
@@ -141,20 +162,21 @@ namespace SqlDataCompare
             result += "\r\nDifferent\r\n";
             foreach (var item in different)
             {
-                result += "~ (" + PrintItem(item.Item1, props) + ") FROM\r\n  (" + PrintItem(item.Item2, props) + ")\r\n";
+                result += "~ (" + PrintItem(item.Item1, propsSrc) + ") FROM\r\n  (" + PrintItem(item.Item2, propsSrc) + ")\r\n";
             }
             result += "\r\nMissing on source\r\n";
             foreach (var item in missingOnSrc)
             {
-                result += "- (-) FROM (" + PrintItem(item, props) + ")\r\n";
+                result += "- (-) FROM (" + PrintItem(item, propsSrc) + ")\r\n";
             }
             result += "\r\nMissing on destionation\r\n";
             foreach (var item in missingOnDst)
             {
-                result += "+ (" + PrintItem(item, props) + ") FROM (-)\r\n";
+                result += "+ (" + PrintItem(item, propsSrc) + ") FROM (-)\r\n";
             }
 
             return result;
+
         }
 
         private static Dictionary<string, Func<object, object>> GetStructure(List<Dictionary<string, string>> src)
@@ -163,7 +185,16 @@ namespace SqlDataCompare
             var firstItem = src.First();
             foreach (var prp in firstItem.Keys)
             {
-                dict.Add(prp, new Func<object, object>((s) => (object)((Dictionary<string, string>)s)[prp]));
+                dict.Add(prp, new Func<object, object>((s) =>
+                {
+                    var d = (Dictionary<string, string>)s;
+                    if (d.ContainsKey(prp))
+                    {
+                        return (object)d[prp];
+                    }
+                    return "#MISSING#";
+
+                }));
             }
             return dict;
         }
@@ -195,12 +226,14 @@ namespace SqlDataCompare
                 if (srcKey.GetType() != dstKey.GetType()) return false;
                 if (srcKey is string)
                 {
+                    if (srcKey == "#MISSING#" || dstKey == "#MISSING#") continue;
                     if (srcKey.ToString() != dstKey.ToString()) return false;
                     if (!object.Equals(srcKey, dstKey)) return false;
                 }
                 if (srcKey.GetType().IsArray || (srcKey as IEnumerable) != null) continue;
                 if (dstKey.GetType().IsArray || (dstKey as IEnumerable) != null) continue;
 
+               
                 if (!object.Equals(srcKey, dstKey)) return false;
 
             }
@@ -219,11 +252,12 @@ namespace SqlDataCompare
                 if (srcKey.GetType() != dstKey.GetType()) return false;
                 if (srcKey is string)
                 {
+                    if (srcKey == "#MISSING#" || dstKey == "#MISSING#") continue;
                     if (srcKey.ToString() != dstKey.ToString()) return false;
+                    if (!object.Equals(srcKey, dstKey)) return false;
                 }
                 if (srcKey.GetType().IsArray || (srcKey as IEnumerable) != null) continue;
                 if (dstKey.GetType().IsArray || (dstKey as IEnumerable) != null) continue;
-
                 if (!object.Equals(srcKey, dstKey)) return false;
 
             }
