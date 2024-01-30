@@ -16,6 +16,10 @@ Where
 * table: The name of the table in format schema.tableName
 * dstFile(optional): The destination file. Will be written on the executable directory unless is an absolute path
 
+## If you like it Buy me a coffe :)
+
+[![paypal](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/paypalme/kendarorg/1)
+
 # Results
 
 <pre>
